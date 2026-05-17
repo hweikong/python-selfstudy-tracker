@@ -1,0 +1,104 @@
+const fs = require('fs');
+
+const navTemplate = `    <nav class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <div class="logo">🐍</div>
+            <span class="logo-text">Python 学习</span>
+        </div>
+        <div class="nav-section">
+            <span class="nav-label">概览</span>
+            <a href="index.html" class="nav-item" data-page="dashboard">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                <span>Dashboard</span>
+            </a>
+            <a href="study.html" class="nav-item" data-page="study">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                <span>学习计划</span>
+            </a>
+        </div>
+        <div class="nav-section">
+            <span class="nav-label">第一阶段 · 基础语法 (W1-8)</span>
+            <a href="phase1.html" class="nav-item" data-page="phase1"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>W1 环境搭建</span></a>
+            <a href="phase1.html#w2" class="nav-item" data-page="phase1"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>W2 变量与字符串</span></a>
+            <a href="phase1.html#w3" class="nav-item" data-page="phase1"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>W3 条件判断</span></a>
+            <a href="phase1.html#w4" class="nav-item" data-page="phase1"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>W4 循环</span></a>
+            <a href="phase1.html#w5" class="nav-item" data-page="phase1"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>W5 数据结构</span></a>
+            <a href="phase1.html#w6" class="nav-item" data-page="phase1"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>W6 函数</span></a>
+            <a href="phase1.html#w7" class="nav-item" data-page="phase1"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>W7 异常与面向对象</span></a>
+            <a href="phase1.html#w8" class="nav-item" data-page="phase1"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>W8 复习与测试</span></a>
+        </div>
+        <div class="nav-section">
+            <span class="nav-label">第二阶段 · 数据分析 (W9-12)</span>
+            <a href="phase2.html" class="nav-item" data-page="phase2"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>W9 NumPy</span></a>
+            <a href="phase2.html#w10" class="nav-item" data-page="phase2"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>W10 Pandas</span></a>
+            <a href="phase2.html#w11" class="nav-item" data-page="phase2"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>W11 Matplotlib</span></a>
+            <a href="phase2.html#w12" class="nav-item" data-page="phase2"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>W12 小项目</span></a>
+        </div>
+        <div class="nav-section">
+            <span class="nav-label">第三阶段 · 爬虫 (W13-16)</span>
+            <a href="phase3.html" class="nav-item" data-page="phase3"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>W13 基础+入门</span></a>
+            <a href="phase3.html#w14" class="nav-item" data-page="phase3"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>W14 爬虫实战1</span></a>
+            <a href="phase3.html#w15" class="nav-item" data-page="phase3"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>W15 爬虫实战2</span></a>
+            <a href="phase3.html#w16" class="nav-item" data-page="phase3"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>W16 小项目</span></a>
+        </div>
+        <div class="nav-section">
+            <span class="nav-label">第四阶段 · 机器学习 (W17-W20)</span>
+            <a href="phase4.html" class="nav-item" data-page="phase4"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>W17 基础概念</span></a>
+            <a href="phase4.html#w18" class="nav-item" data-page="phase4"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>W18 回归算法</span></a>
+            <a href="phase4.html#w19" class="nav-item" data-page="phase4"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>W19 分类算法</span></a>
+            <a href="phase4.html#w20" class="nav-item" data-page="phase4"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>W20 小项目</span></a>
+        </div>
+        <div class="nav-section">
+            <span class="nav-label">第五阶段 · 办公自动化 (W21-22)</span>
+            <a href="phase5.html" class="nav-item" data-page="phase5"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>W21 Excel自动化</span></a>
+            <a href="phase5.html#w22" class="nav-item" data-page="phase5"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>W22 Word/PDF/邮件</span></a>
+        </div>
+        <div class="nav-section">
+            <span class="nav-label">第六阶段 · 项目实战 (W23-26)</span>
+            <a href="phase6.html" class="nav-item" data-page="phase6"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>W23-W26 项目实战</span></a>
+        </div>
+    </nav>`;
+
+const baseTemplate = (title, bodyContent) => `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${title} - Python 学习追踪器</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body>
+    ${navTemplate}
+    <main class="main-content" id="main-content">
+        ${bodyContent}
+    </main>
+    <button class="menu-toggle" id="menuToggle">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+    <script src="data.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>`;
+
+// Generate phase files
+const phases = [
+    { id: 'phase1', name: '基础语法', title: 'Python 基础语法 (W1-W8)' },
+    { id: 'phase2', name: '数据分析', title: '数据分析 (W9-W12)' },
+    { id: 'phase3', name: '网络爬虫', title: '网络爬虫 (W13-W16)' },
+    { id: 'phase4', name: '机器学习', title: '机器学习 (W17-W20)' },
+    { id: 'phase5', name: '办公自动化', title: '办公自动化 (W21-W22)' },
+    { id: 'phase6', name: '项目实战', title: '项目实战 (W23-W26)' },
+];
+
+// Read the existing app.js to get the renderPhasePage function
+const appJs = fs.readFileSync('app.js', 'utf8');
+
+phases.forEach(phase => {
+    const content = baseTemplate(phase.title, `<!-- Phase content loaded by JS -->`);
+    fs.writeFileSync(`${phase.id}.html`, content);
+    console.log(`Generated ${phase.id}.html`);
+});
+
+console.log('All phase files generated successfully!');
