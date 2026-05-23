@@ -12,14 +12,9 @@ const DB_STORE = 'progress';
 let dbInstance = null;
 let _progressCache = null;
 let _dbReady = false;
-let _pendingCallbacks = [];
 
 function initDB() {
-    if (dbInstance) {
-        if (_dbReady) return;
-        _flushPending();
-        return;
-    }
+    if (dbInstance) return;
     try {
         const request = indexedDB.open(DB_NAME, 1);
         request.onupgradeneeded = () => {
@@ -28,18 +23,15 @@ function initDB() {
         request.onsuccess = () => {
             dbInstance = request.result;
             _loadFromDB();
-            _flushPending();
         };
         request.onerror = () => {
             // IndexedDB unavailable, fall back to sessionStorage
             _dbReady = true;
             _loadFallback();
-            _flushPending();
         };
     } catch (e) {
         _dbReady = true;
         _loadFallback();
-        _flushPending();
     }
 }
 
@@ -68,26 +60,12 @@ function _loadFallback() {
     _dbReady = true;
 }
 
-function _flushPending() {
-    const callbacks = _pendingCallbacks.splice(0);
-    callbacks.forEach(cb => cb());
-}
-
-function _queueReady(cb) {
-    if (_dbReady) {
-        cb();
-    } else {
-        _pendingCallbacks.push(cb);
-    }
-}
-
 function getProgress() {
     return _progressCache || {};
 }
 
 function saveProgress(progress) {
     _progressCache = progress;
-    // Write to IndexedDB if available, otherwise sessionStorage
     if (dbInstance) {
         const tx = dbInstance.transaction(DB_STORE, 'readwrite');
         tx.objectStore(DB_STORE).put(progress, STORAGE_KEY);
