@@ -6,27 +6,48 @@
 const STORAGE_KEY = 'python-tracker-progress';
 const START_DATE = '2026-05-25'; // User's start date
 
+// Detect file:// protocol — localStorage is blocked in that context
+const isFileProtocol = location.protocol === 'file:';
+
 function getProgress() {
+    if (isFileProtocol) {
+        // file:// protocol — localStorage not available, use sessionStorage as fallback
+        try {
+            const saved = sessionStorage.getItem(STORAGE_KEY);
+            return saved ? JSON.parse(saved) : {};
+        } catch {
+            return {};
+        }
+    }
     const saved = localStorage.getItem(STORAGE_KEY);
     return saved ? JSON.parse(saved) : {};
 }
 
 function saveProgress(progress) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(progress));
-}
-
-function toggleDay(weekId) {
-    const progress = getProgress();
-    progress[weekId] = !progress[weekId];
-    saveProgress(progress);
-    renderCurrentPage();
+    if (isFileProtocol) {
+        // file:// protocol — store in sessionStorage (survives navigation)
+        try {
+            sessionStorage.setItem(STORAGE_KEY, JSON.stringify(progress));
+        } catch (e) {
+            console.warn('sessionStorage failed:', e);
+        }
+    } else {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(progress));
+    }
 }
 
 function getWeekProgress(phase) {
     const progress = getProgress();
-    const weekIds = Object.keys(phase.weeks);
-    const completed = weekIds.filter(w => progress[w]).length;
-    return { completed, total: weekIds.length, percent: weekIds.length > 0 ? Math.round((completed / weekIds.length) * 100) : 0 };
+    let totalDays = 0;
+    let completedDays = 0;
+    Object.values(phase.weeks).forEach(week => {
+        week.days.forEach((_, idx) => {
+            totalDays++;
+            const key = `${phase.id}-${Object.keys(phase.weeks).find(k => phase.weeks[k] === week)}-${idx}`;
+            if (progress[key]) completedDays++;
+        });
+    });
+    return { completed: completedDays, total: totalDays, percent: totalDays > 0 ? Math.round((completedDays / totalDays) * 100) : 0 };
 }
 
 function getOverallProgress() {
@@ -460,7 +481,11 @@ function getPhaseName(phaseId) {
 
 function resetProgress() {
     if (confirm('⚠️ 确定要重置所有学习进度吗？此操作不可撤销。')) {
-        localStorage.removeItem(STORAGE_KEY);
+        if (isFileProtocol) {
+            try { sessionStorage.removeItem(STORAGE_KEY); } catch {}
+        } else {
+            localStorage.removeItem(STORAGE_KEY);
+        }
         renderCurrentPage();
     }
 }
