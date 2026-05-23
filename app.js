@@ -540,5 +540,20 @@ document.getElementById('menuToggle').addEventListener('click', () => {
 // ===== INIT: Load progress on page load =====
 initDB();
 document.addEventListener('DOMContentLoaded', () => {
-    renderCurrentPage();
+    // Wait for IndexedDB to be ready before rendering
+    if (_dbReady) {
+        renderCurrentPage();
+    } else {
+        const checkReady = setInterval(() => {
+            if (_dbReady) {
+                clearInterval(checkReady);
+                renderCurrentPage();
+            }
+        }, 100);
+        // Fallback timeout: render after 5s even if DB not ready
+        setTimeout(() => {
+            clearInterval(checkReady);
+            renderCurrentPage();
+        }, 5000);
+    }
 });
