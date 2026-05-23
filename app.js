@@ -561,3 +561,6 @@ document.getElementById('menuToggle').addEventListener('click', () => {
 
 // ===== INIT: Load progress on page load =====
 initDB();
+document.addEventListener('DOMContentLoaded', () => {
+    renderCurrentPage();
+});
