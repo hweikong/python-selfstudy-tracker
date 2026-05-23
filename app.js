@@ -3,75 +3,50 @@
    ============================================= */
 
 // ===== State Management =====
-const STORAGE_KEY = 'python-tracker-progress';
+const STORAGE_API = '/api/progress';  // HTTP API endpoint
 const START_DATE = '2026-05-25'; // User's start date
 
-// IndexedDB for persistent storage (works on file:// protocol)
-const DB_NAME = 'python-tracker-db';
-const DB_STORE = 'progress';
-let dbInstance = null;
 let _progressCache = null;
-let _dbReady = false;
 
-function initDB() {
-    if (dbInstance) return;
+// ===== Persistent Storage Layer =====
+// Uses HTTP API to save/load progress from a JSON file on disk.
+// This survives browser close because data is stored on the filesystem,
+// not in browser localStorage (which Edge clears for file:// pages).
+
+async function loadProgress() {
+    if (_progressCache !== null) return _progressCache;
+    _progressCache = {};
     try {
-        const request = indexedDB.open(DB_NAME, 1);
-        request.onupgradeneeded = () => {
-            request.result.createObjectStore(DB_STORE);
-        };
-        request.onsuccess = () => {
-            dbInstance = request.result;
-            _loadFromDB();
-        };
-        request.onerror = () => {
-            // IndexedDB unavailable, fall back to sessionStorage
-            _dbReady = true;
-            _loadFallback();
-        };
+        const resp = await fetch(STORAGE_API);
+        if (resp.ok) {
+            const data = await resp.json();
+            _progressCache = (typeof data === 'object' && !Array.isArray(data)) ? data : {};
+        }
     } catch (e) {
-        _dbReady = true;
-        _loadFallback();
-    }
-}
-
-function _loadFromDB() {
-    if (!dbInstance) return;
-    const tx = dbInstance.transaction(DB_STORE, 'readonly');
-    const store = tx.objectStore(DB_STORE);
-    const getReq = store.get(STORAGE_KEY);
-    getReq.onsuccess = () => {
-        _progressCache = getReq.result || {};
-        _dbReady = true;
-    };
-    getReq.onerror = () => {
+        console.warn('Failed to load progress:', e);
         _progressCache = {};
-        _dbReady = true;
-    };
+    }
+    return _progressCache;
 }
 
-function _loadFallback() {
+async function saveProgress(progress) {
+    _progressCache = progress;
     try {
-        const saved = sessionStorage.getItem(STORAGE_KEY);
-        _progressCache = saved ? JSON.parse(saved) : {};
-    } catch {
-        _progressCache = {};
+        const resp = await fetch(STORAGE_API, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json;charset=utf-8' },
+            body: JSON.stringify(progress)
+        });
+        if (!resp.ok) console.error('Failed to save progress:', resp.status);
+    } catch (e) {
+        console.error('Storage save failed:', e);
     }
-    _dbReady = true;
 }
 
 function getProgress() {
+    // If cache isn't loaded yet, return empty object
+    // (loadProgress is called in DOMContentLoaded)
     return _progressCache || {};
-}
-
-function saveProgress(progress) {
-    _progressCache = progress;
-    if (dbInstance) {
-        const tx = dbInstance.transaction(DB_STORE, 'readwrite');
-        tx.objectStore(DB_STORE).put(progress, STORAGE_KEY);
-    } else {
-        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(progress));
-    }
 }
 
 function getWeekProgress(phase) {
@@ -433,10 +408,10 @@ function renderWeekCard(phase, week, weekId, phaseIdx) {
     return html;
 }
 
-function toggleDayItem(dayKey, el) {
+async function toggleDayItem(dayKey, el) {
     const progress = getProgress();
     progress[dayKey] = !progress[dayKey];
-    saveProgress(progress);
+    await saveProgress(progress);
 
     el.classList.toggle('checked');
     el.innerHTML = progress[dayKey] ? '✓' : '';
@@ -519,13 +494,9 @@ function getPhaseName(phaseId) {
 
 async function resetProgress() {
     if (confirm('⚠️ 确定要重置所有学习进度吗？此操作不可撤销。')) {
-        _progressCache = null;
-        if (dbInstance) {
-            const tx = dbInstance.transaction(DB_STORE, 'readwrite');
-            tx.objectStore(DB_STORE).delete(STORAGE_KEY);
-        } else {
-            sessionStorage.removeItem(STORAGE_KEY);
-        }
+        _progressCache = {};
+        // Clear progress by saving empty object via API
+        await saveProgress({});
         renderCurrentPage();
     }
 }
@@ -537,23 +508,8 @@ document.getElementById('menuToggle').addEventListener('click', () => {
     if (overlay) overlay.classList.toggle('active');
 });
 
-// ===== INIT: Load progress on page load =====
-initDB();
-document.addEventListener('DOMContentLoaded', () => {
-    // Wait for IndexedDB to be ready before rendering
-    if (_dbReady) {
-        renderCurrentPage();
-    } else {
-        const checkReady = setInterval(() => {
-            if (_dbReady) {
-                clearInterval(checkReady);
-                renderCurrentPage();
-            }
-        }, 100);
-        // Fallback timeout: render after 5s even if DB not ready
-        setTimeout(() => {
-            clearInterval(checkReady);
-            renderCurrentPage();
-        }, 5000);
-    }
+// ===== INIT: Load progress then render page =====
+document.addEventListener('DOMContentLoaded', async () => {
+    await loadProgress();
+    renderCurrentPage();
 });
