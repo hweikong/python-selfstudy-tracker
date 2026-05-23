@@ -6,33 +6,93 @@
 const STORAGE_KEY = 'python-tracker-progress';
 const START_DATE = '2026-05-25'; // User's start date
 
-// Detect file:// protocol — localStorage is blocked in that context
-const isFileProtocol = location.protocol === 'file:';
+// IndexedDB for persistent storage (works on file:// protocol)
+const DB_NAME = 'python-tracker-db';
+const DB_STORE = 'progress';
+let dbInstance = null;
+let _progressCache = null;
+let _dbReady = false;
+let _pendingCallbacks = [];
+
+function initDB() {
+    if (dbInstance) {
+        if (_dbReady) return;
+        _flushPending();
+        return;
+    }
+    try {
+        const request = indexedDB.open(DB_NAME, 1);
+        request.onupgradeneeded = () => {
+            request.result.createObjectStore(DB_STORE);
+        };
+        request.onsuccess = () => {
+            dbInstance = request.result;
+            _loadFromDB();
+            _flushPending();
+        };
+        request.onerror = () => {
+            // IndexedDB unavailable, fall back to sessionStorage
+            _dbReady = true;
+            _loadFallback();
+            _flushPending();
+        };
+    } catch (e) {
+        _dbReady = true;
+        _loadFallback();
+        _flushPending();
+    }
+}
+
+function _loadFromDB() {
+    if (!dbInstance) return;
+    const tx = dbInstance.transaction(DB_STORE, 'readonly');
+    const store = tx.objectStore(DB_STORE);
+    const getReq = store.get(STORAGE_KEY);
+    getReq.onsuccess = () => {
+        _progressCache = getReq.result || {};
+        _dbReady = true;
+    };
+    getReq.onerror = () => {
+        _progressCache = {};
+        _dbReady = true;
+    };
+}
+
+function _loadFallback() {
+    try {
+        const saved = sessionStorage.getItem(STORAGE_KEY);
+        _progressCache = saved ? JSON.parse(saved) : {};
+    } catch {
+        _progressCache = {};
+    }
+    _dbReady = true;
+}
+
+function _flushPending() {
+    const callbacks = _pendingCallbacks.splice(0);
+    callbacks.forEach(cb => cb());
+}
+
+function _queueReady(cb) {
+    if (_dbReady) {
+        cb();
+    } else {
+        _pendingCallbacks.push(cb);
+    }
+}
 
 function getProgress() {
-    if (isFileProtocol) {
-        // file:// protocol — localStorage not available, use sessionStorage as fallback
-        try {
-            const saved = sessionStorage.getItem(STORAGE_KEY);
-            return saved ? JSON.parse(saved) : {};
-        } catch {
-            return {};
-        }
-    }
-    const saved = localStorage.getItem(STORAGE_KEY);
-    return saved ? JSON.parse(saved) : {};
+    return _progressCache || {};
 }
 
 function saveProgress(progress) {
-    if (isFileProtocol) {
-        // file:// protocol — store in sessionStorage (survives navigation)
-        try {
-            sessionStorage.setItem(STORAGE_KEY, JSON.stringify(progress));
-        } catch (e) {
-            console.warn('sessionStorage failed:', e);
-        }
+    _progressCache = progress;
+    // Write to IndexedDB if available, otherwise sessionStorage
+    if (dbInstance) {
+        const tx = dbInstance.transaction(DB_STORE, 'readwrite');
+        tx.objectStore(DB_STORE).put(progress, STORAGE_KEY);
     } else {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(progress));
+        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(progress));
     }
 }
 
@@ -479,12 +539,14 @@ function getPhaseName(phaseId) {
     return phase ? phase.name : '';
 }
 
-function resetProgress() {
+async function resetProgress() {
     if (confirm('⚠️ 确定要重置所有学习进度吗？此操作不可撤销。')) {
-        if (isFileProtocol) {
-            try { sessionStorage.removeItem(STORAGE_KEY); } catch {}
+        _progressCache = null;
+        if (dbInstance) {
+            const tx = dbInstance.transaction(DB_STORE, 'readwrite');
+            tx.objectStore(DB_STORE).delete(STORAGE_KEY);
         } else {
-            localStorage.removeItem(STORAGE_KEY);
+            sessionStorage.removeItem(STORAGE_KEY);
         }
         renderCurrentPage();
     }
@@ -497,129 +559,5 @@ document.getElementById('menuToggle').addEventListener('click', () => {
     if (overlay) overlay.classList.toggle('active');
 });
 
-// Close sidebar on nav click (mobile)
-document.querySelectorAll('.nav-item').forEach(item => {
-    item.addEventListener('click', () => {
-        if (window.innerWidth <= 768) {
-            document.getElementById('sidebar').classList.remove('open');
-            const overlay = document.getElementById('sidebarOverlay');
-            if (overlay) overlay.classList.remove('active');
-        }
-    });
-});
-
-// ===== Init =====
-window.addEventListener('hashchange', renderCurrentPage);
-window.addEventListener('load', renderCurrentPage);
-
-// ===== Generate Phase HTML Files =====
-function generatePhaseFiles() {
-    COURSE_DATA.phases.forEach((phase, idx) => {
-        const pageNum = idx + 1;
-        const phaseNum = idx + 1;
-        let html = document.documentElement.outerHTML.replace('id="main-content"', `id="main-content"`);
-
-        // Replace body content with phase template
-        const bodyContent = `
-    <main class="main-content" id="main-content">
-        <!-- Phase content loaded by JS -->
-    </main>
-    <button class="menu-toggle" id="menuToggle">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-    </button>
-    <script src="data.js"></script>
-    <script src="app.js"></script>
-        `;
-
-        // Write the phase HTML file
-        const fs = require('fs');
-        const fullHtml = `<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${phase.name} - Python 学习追踪器</title>
-    <link rel="stylesheet" href="styles.css">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
-</head>
-<body>
-    <nav class="sidebar" id="sidebar">
-        <div class="sidebar-header">
-            <div class="logo">🐍</div>
-            <span class="logo-text">Python 学习</span>
-        </div>
-        <div class="nav-section">
-            <span class="nav-label">概览</span>
-            <a href="index.html" class="nav-item" data-page="dashboard">
-                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-                <span>Dashboard</span>
-            </a>
-            <a href="study.html" class="nav-item" data-page="study">
-                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
-                <span>学习计划</span>
-            </a>
-        </div>
-        <div class="nav-section">
-            <span class="nav-label">第一阶段 · 基础语法 (W1-8)</span>
-            <a href="phase1.html" class="nav-item" data-page="phase1"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>W1 环境搭建</span></a>
-            <a href="phase1.html#w2" class="nav-item" data-page="phase1"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>W2 变量与字符串</span></a>
-            <a href="phase1.html#w3" class="nav-item" data-page="phase1"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>W3 条件判断</span></a>
-            <a href="phase1.html#w4" class="nav-item" data-page="phase1"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>W4 循环</span></a>
-            <a href="phase1.html#w5" class="nav-item" data-page="phase1"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>W5 数据结构</span></a>
-            <a href="phase1.html#w6" class="nav-item" data-page="phase1"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>W6 函数</span></a>
-            <a href="phase1.html#w7" class="nav-item" data-page="phase1"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>W7 异常与面向对象</span></a>
-            <a href="phase1.html#w8" class="nav-item" data-page="phase1"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>W8 复习与测试</span></a>
-        </div>
-        <div class="nav-section">
-            <span class="nav-label">第二阶段 · 数据分析 (W9-12)</span>
-            <a href="phase2.html" class="nav-item" data-page="phase2"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>W9 NumPy</span></a>
-            <a href="phase2.html#w10" class="nav-item" data-page="phase2"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>W10 Pandas</span></a>
-            <a href="phase2.html#w11" class="nav-item" data-page="phase2"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>W11 Matplotlib</span></a>
-            <a href="phase2.html#w12" class="nav-item" data-page="phase2"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>W12 小项目</span></a>
-        </div>
-        <div class="nav-section">
-            <span class="nav-label">第三阶段 · 爬虫 (W13-16)</span>
-            <a href="phase3.html" class="nav-item" data-page="phase3"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>W13 基础+入门</span></a>
-            <a href="phase3.html#w14" class="nav-item" data-page="phase3"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>W14 爬虫实战1</span></a>
-            <a href="phase3.html#w15" class="nav-item" data-page="phase3"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>W15 爬虫实战2</span></a>
-            <a href="phase3.html#w16" class="nav-item" data-page="phase3"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>W16 小项目</span></a>
-        </div>
-        <div class="nav-section">
-            <span class="nav-label">第四阶段 · 机器学习 (W17-W20)</span>
-            <a href="phase4.html" class="nav-item" data-page="phase4"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>W17 基础概念</span></a>
-            <a href="phase4.html#w18" class="nav-item" data-page="phase4"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>W18 回归算法</span></a>
-            <a href="phase4.html#w19" class="nav-item" data-page="phase4"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>W19 分类算法</span></a>
-            <a href="phase4.html#w20" class="nav-item" data-page="phase4"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>W20 小项目</span></a>
-        </div>
-        <div class="nav-section">
-            <span class="nav-label">第五阶段 · 办公自动化 (W21-22)</span>
-            <a href="phase5.html" class="nav-item" data-page="phase5"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>W21 Excel自动化</span></a>
-            <a href="phase5.html#w22" class="nav-item" data-page="phase5"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>W22 Word/PDF/邮件</span></a>
-        </div>
-        <div class="nav-section">
-            <span class="nav-label">第六阶段 · 项目实战 (W23-26)</span>
-            <a href="phase6.html" class="nav-item" data-page="phase6"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>W23-W26 项目实战</span></a>
-        </div>
-    </nav>
-    <main class="main-content" id="main-content">
-        <!-- Phase content loaded by JS -->
-    </main>
-    <button class="menu-toggle" id="menuToggle">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-    </button>
-    <script src="data.js"></script>
-    <script src="app.js"></script>
-</body>
-</html>`;
-
-        require('fs').writeFileSync(`phase${pageNum}.html`, fullHtml);
-    });
-
-    console.log('Phase files generated successfully');
-}
-
-// Auto-generate phase files on load
-if (typeof require !== 'undefined' && typeof window === 'undefined') {
-    generatePhaseFiles();
-}
+// ===== INIT: Load progress on page load =====
+initDB();
